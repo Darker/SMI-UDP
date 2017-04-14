@@ -52,6 +52,10 @@ int mainClient(int argc, char *argv[])
         QHostAddress address(args.value("a"));
         serverAddr = address;
     }
+    if(serverAddr.isNull()) {
+        printUsage("Error: invalid IP address.");
+        port = 0;
+    }
     if(port>1000 && !targetFile.isEmpty()) {
         FileClient client(serverAddr, port, &a);
         client.sendFile(targetFile);

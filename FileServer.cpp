@@ -7,7 +7,7 @@ FileServer::FileServer(qint64 port, QObject *parent, QHostAddress listenAddr)
     , listener(new QUdpSocket(this))
     , serverAddress(listenAddr, port)
 {
-    listener->bind(listenAddr.isNull()?QHostAddress::Any:listenAddr, 6660);
+    listener->bind(listenAddr.isNull()?QHostAddress::Any:listenAddr, port);
 
     connect(listener, &QUdpSocket::readyRead,
             this, &FileServer::readPendingDatagrams, Qt::QueuedConnection);

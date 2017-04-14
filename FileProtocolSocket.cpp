@@ -185,7 +185,10 @@ void FileProtocolSocket::filterDatagrams()
                                 &sender, &senderPort);
         ClientID addr(sender, senderPort);
         // Apparently, the OS already filters datagrams
-        datagramReceived(datagram);
+        if(datagram.length()>0)
+            datagramReceived(datagram);
+        else
+            qWarning()<<"Empty datagram from"<<(sender.isNull()?"0.0.0.0":sender.toString())<<":"<<senderPort;
         //if(!target || addr==target) {
         //    datagramReceived(datagram);
         //}
