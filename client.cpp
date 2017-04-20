@@ -31,7 +31,7 @@ int mainClient(int argc, char *argv[])
             targetFile = path.absoluteFilePath();
         }
         else {
-            printUsage("Error: file does not exist or isn't readable.");
+            printUsage(QString("Error: file %1 does not exist or isn't readable.").arg(path.absoluteFilePath()));
         }
     }
     else {

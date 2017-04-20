@@ -6,7 +6,12 @@
 #include "Exception.h"
 #include "ClientID.h"
 #include <QFileInfo>
+#include <QQueue>
+#include <QTime>
+
+class PacketGuard;
 class FileChunk;
+class BasicDataClass;
 class FileProtocolSocket : public QObject
 {
     Q_OBJECT
@@ -24,32 +29,77 @@ public:
     }
 
 signals:
-    void fileReceived(QByteArray data);
+    void fileReceived(QString filename);
     // used to make file sending async
     void fileChunkReady();
     void fileSent();
+    // When outgoing file transfer starts
+    void fileSendStarted();
+    // When packet delivery is confirmed
+    void receiptConfirmed(quint32 packetIndex);
+    // Used to init cleanup
+    void fatalError();
+    // Emitted when all packets are confirmed to be delivered
+    // this is a good time to send more data or exit
+    void allPacketsDelivered();
+    // When limit of pending packets is not exceeded
+    // emitted every time a packet is confirmed
+    // and limit condition is met
+    // Therefore is a good way of deferring sending after limit is no longer exceeded
+    void packetLimitNotExceeded();
 public slots:
     void sendFile(QString filePath) {sendFile(QFileInfo(filePath));}
     void sendFile(QFileInfo filePath);
     // does nothing if file is not open or is already sent
     void sendNextFileChunk();
     void datagramReceived(QByteArray data);
-    void fileHeaderReceived(QString name, quint64 size);
+    void fileHeaderReceived(QString name, quint64 size, QByteArray checksum);
     void fileChunkReceived(QByteArray data, quint64 offset);
 
     void sendDatagram(QByteArray data);
+
+    void sendDatagramGuarded(QByteArray data, quint32 packetIndex);
+    void sendDatagramGuarded(const BasicDataClass& data);
+
     void filterDatagram(QByteArray datagram, ClientID source);
     // Reads all datagrams from the socket and picks those that match client ID
     void filterDatagrams();
+
+    // Call this to notify packet of given index that it was received
+    void notifyReceipt(quint32 packetIndex);
+
+    void pendingPacketFailed(PacketGuard* packet);
+    // Gives the ammount of bytes transferred so far
+    // No behavior defined when file is not being sent
+    quint32 sendBytes() {return currentByte;}
+    // Gives the size of file being sent
+    quint32 sendFileSize() {
+        return currentFile!=nullptr?currentFile->size():0;
+    }
+    QTime sendSinceStart() {return transferStart;}
+
 protected:
     QUdpSocket* socket;
     QDateTime lastActivity;
     bool handlesAllDatagrams;
-
+    // Pending unconfirmed packets
+    QList<PacketGuard*> pendingPackets;
+    // list of packets that were received correctly and are to be ignored if received again
+    // (although the receipt must be reconfirmed, otherwise the disconnect error will be trigerred)
+    QQueue<quint32> receivedPackets;
+    static const quint32 MAX_RECEIVED_QUEUE_LENGTH = 400;
+    // this is a recommended value
+    // the program should avoid even generating packets when the ammount of pending packets is above this
+    static const quint32 PENDING_PACKET_LIMIT = 200;
+    static const quint32 chunkSize = 400;
     // send file stuff
     QFile* currentFile;
+    QTime transferStart;
+    // indicates the byte offset at hich the next chunk must begin
+    // If currentFile is nullptr, this also indicates that fileSent was not emmited yet
     quint64 currentByte;
-    static const quint32 chunkSize = 50;
+    // checksum of file being received
+    QByteArray currentChecksum;
     // received file
     QFile* writeFile;
     // this is used to check how much more data do we have to receive

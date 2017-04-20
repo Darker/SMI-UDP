@@ -5,6 +5,7 @@
 #include <QDataStream>
 #include <QIODevice>
 #include <memory>
+#include <QDebug>
 /*class Sendable {
     QByteArray toByteArray() const = 0;
     operator QByteArray() const {
@@ -24,10 +25,20 @@ inline T get(QDataStream& str) {
 /** Specific data classes **/
 class BasicDataClass {
 public:
+    // ID of this packet data type
     static const quint32 ID = 0;
-    virtual quint32 getID() const = 0;
-    BasicDataClass() {
 
+
+    virtual quint32 getID() const = 0;
+    BasicDataClass() : packetIndex(getIndex()) {
+
+    }
+
+    virtual void setPacketIndex(quint32 newIndex) {
+        packetIndex = newIndex;
+    }
+    virtual quint32 getPacketIndex() const {
+        return packetIndex;
     }
 
     virtual QByteArray toBytes() const {
@@ -40,7 +51,7 @@ public:
     virtual QByteArray toMessage() const {
         QByteArray buffer;
         QDataStream stream(&buffer, QIODevice::WriteOnly);
-        stream<<(quint32)getID()<<toBytes();
+        stream<<(quint32)getID()<<packetIndex<<toBytes();
         return buffer;
     }
     virtual QString toString() const = 0;
@@ -49,6 +60,9 @@ public:
 protected:
     // put the individual parts to the stream in this method
     virtual void toBytes(QDataStream& stream) const = 0;
+    // Unique identifier of this packet
+    quint32 packetIndex;
+    static quint32 getIndex();
 };
 typedef std::shared_ptr<BasicDataClass> BDataPtr;
 class ErrorData: public BasicDataClass {
@@ -74,19 +88,17 @@ public:
     static const quint32 ID = 1;
     virtual quint32 getID() const {return ID;}
 
-    FileHeader(const QString& filename, const quint64 size) :
-        BasicDataClass()
-      , filename(filename)
-      , size(size)
-    {}
+    FileHeader(const QString& filename, const quint64 size);
+    FileHeader(const QString& filename, const quint64 size, const QByteArray checksum);
     const QString filename;
+    const QByteArray md5;
     const quint64 size;
 
     virtual QString toString() const {return "FileHeader - "+filename;}
 
 protected:
     virtual void toBytes(QDataStream& stream) const override {
-        stream<<(QString)filename<<(quint64)size;
+        stream<<(QString)filename<<(quint64)size<<md5;
     }
 
 };
@@ -107,7 +119,17 @@ public:
     const QByteArray data;
 protected:
     virtual void toBytes(QDataStream& stream) const override {
-        stream<<startByte<<data;
+        // Random error
+        if(false && (qrand() % 30 == 7)) {
+            QByteArray damagedData(data);
+            damagedData[qrand()%damagedData.length()] = (char)damagedData[qrand()%damagedData.length()]*11;
+            stream<<startByte<<damagedData;
+            qWarning()<<"Sending damaged packet (on purpose)";
+        }
+        else {
+            stream<<startByte<<data;
+        }
+
     }
 
 };
@@ -131,13 +153,32 @@ protected:
         stream<<message;
     }
 };
+class ConfirmReceipt: public BasicDataClass {
+public:
+    static const quint32 ID = 99;
+    virtual quint32 getID() const override {return ID;}
+    ConfirmReceipt(const quint32 index) :
+        BasicDataClass()
+    {
+        setPacketIndex(index);
+    }
 
+    virtual QByteArray toBytes() const override {
+        return BasicDataClass::toBytes();
+    }
+    virtual QString toString() const {return "ConfirmReceipt - #"+QString::number(packetIndex);}
+protected:
+    virtual void toBytes(QDataStream& stream) const {
+    }
+};
 
 QDataStream& operator>>(QDataStream& str, FileHeader*& ptr);
 
 QDataStream& operator>>(QDataStream& str, FileChunk*& ptr);
 
 QDataStream& operator>>(QDataStream& str, Ping*& ptr);
+
+QDataStream& operator>>(QDataStream& str, ConfirmReceipt*& ptr);
 
 class DataPacket
 {

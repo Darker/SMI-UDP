@@ -2,7 +2,7 @@ QT += core
 QT -= gui
 QT += network
 CONFIG += c++11
-
+#ddd
 TARGET = networking
 CONFIG += console
 CONFIG -= app_bundle
@@ -18,7 +18,11 @@ SOURCES += main.cpp \
     Exception.cpp \
     FileClient.cpp \
     client.cpp \
-    server.cpp
+    server.cpp \
+    CRC.cpp \
+    Checksum.cpp \
+    PacketGuard.cpp \
+    SendProgress.cpp
 
 HEADERS += \
     FileServer.h \
@@ -27,5 +31,9 @@ HEADERS += \
     DataConvertor.h \
     DataPacket.h \
     Exception.h \
-    FileClient.h
+    FileClient.h \
+    CRC.h \
+    Checksum.h \
+    PacketGuard.h \
+    SendProgress.h
 #
