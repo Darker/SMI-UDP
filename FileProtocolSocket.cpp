@@ -15,7 +15,10 @@ FileProtocolSocket::FileProtocolSocket(QUdpSocket* parent, ClientID target) :
   , currentByte(0)
 {
     QObject::connect(this, &FileProtocolSocket::fileChunkReady, this, &FileProtocolSocket::sendNextFileChunk, Qt::QueuedConnection);
-    QObject::connect(this, &FileProtocolSocket::receiptConfirmed, this, &FileProtocolSocket::notifyReceipt, Qt::QueuedConnection);
+    QObject::connect(this, &FileProtocolSocket::receiptsConfirmed, this, &FileProtocolSocket::notifyReceipt, Qt::QueuedConnection);
+    QObject::connect(&receivedUnconfirmedTimeout, &QTimer::timeout, this, &FileProtocolSocket::confirmUnconfirmedPackets);
+    receivedUnconfirmedTimeout.setSingleShot(true);
+    receivedUnconfirmedTimeout.setInterval(MULTI_CONFIRM_MAX_WAIT);
 }
 
 QDateTime FileProtocolSocket::getLastActivity() const
@@ -41,6 +44,7 @@ void FileProtocolSocket::sendFile(QFileInfo filePath)
         currentFile = new QFile(filePath.absoluteFilePath(), this);
         currentFile->open(QIODevice::ReadOnly);
         transferStart.restart();
+        transferTimeSpentWaiting = 0;
         FileHeader header(filePath.completeBaseName()+"."+filePath.suffix(), filePath.size(), Checksum::file(currentFile, QCryptographicHash::Md5));
         sendDatagramGuarded(header);
 
@@ -57,17 +61,18 @@ void FileProtocolSocket::sendNextFileChunk()
     //QFile file(currentFile.absoluteFilePath());
     //file.open(QIODevice::ReadOnly);
     //file.seek(currentByte);
-    QByteArray data(currentFile->read(chunkSize));
-    if(data.length()==0)
-        return;
+    for(int i=0; i<10 && pendingPackets.length()<PENDING_PACKET_LIMIT; ++i) {
+        const QByteArray data(currentFile->read(chunkSize));
+        if(data.length()>0) {
+            FileChunk chunk(currentByte, data);
+            sendDatagramGuarded(chunk);
 
-    FileChunk chunk(currentByte, data);
-    sendDatagramGuarded(chunk);
-
-    currentByte+=data.length();
+            currentByte+=data.length();
+        }
+    }
 
     if(!currentFile->atEnd()) {
-        if(pendingPackets.length()<5) {
+        if(pendingPackets.length()<PENDING_PACKET_LIMIT) {
             emit fileChunkReady();
         }
         else {
@@ -77,16 +82,20 @@ void FileProtocolSocket::sendNextFileChunk()
             // if this is true, then our connection is disconnected and the signal should be ignored
             std::shared_ptr<bool> disconnectedAlready(new bool);
             *disconnectedAlready = false;
+            QTime startedWaiting;
+            startedWaiting.start();
 
-            *connection = connect(this, &FileProtocolSocket::packetLimitNotExceeded, this, [connection, this, disconnectedAlready]() {
+            *connection = connect(this, &FileProtocolSocket::packetLimitNotExceeded, this, [connection, this, disconnectedAlready, startedWaiting]() {
                 if(*disconnectedAlready) {
                     //qWarning()<<"Multiple calls to transfer resume lambda function!";
                     return;
                 }
-                if(this->pendingPackets.length() < 5) {
+                if(this->pendingPackets.length() <PENDING_PACKET_LIMIT-5) {
                     //qInfo()<<"Resuming transfer.";
                     *disconnectedAlready = true;
                     QObject::disconnect(*connection);
+                    this->transferTimeSpentWaiting += startedWaiting.elapsed();
+                    //qInfo() << "Time spent waiting:"<<this->transferTimeSpentWaiting/1000;
                     emit this->fileChunkReady();
                 }
             }/*, Qt::QueuedConnection*/);
@@ -170,6 +179,7 @@ void FileProtocolSocket::datagramReceived(QByteArray data)
 
     // See if the value was received already
     bool received = false;
+    bool canBeMultiConfirmed = true;
     if(receivedPackets.contains(packetIndex)) {
         received = true;
     }
@@ -204,7 +214,17 @@ void FileProtocolSocket::datagramReceived(QByteArray data)
             break;
         }
         case ConfirmReceipt::ID: {
-            emit receiptConfirmed(packetIndex);
+            QList<quint32> idx;
+            idx<<packetIndex;
+            emit receiptsConfirmed(idx);
+            break;
+        }
+        case ConfirmReceiptMulti::ID: {
+            ConfirmReceiptMulti* multi = nullptr;
+            stream>>multi;
+            emit receiptsConfirmed(multi->indexes);
+            // multi packet confirmation is not re-confirmed
+            delete multi;
             break;
         }
         default:{
@@ -223,6 +243,8 @@ void FileProtocolSocket::datagramReceived(QByteArray data)
             // debug and cleanup
             if(parsedData->getID()!=FileChunk::ID)
                 qInfo()<<"Received: "<<parsedData->toString();
+            // check if this packet must be confirmed immediatelly
+            canBeMultiConfirmed = parsedData->canBeConfirmedLater();
             delete parsedData;
         }
     }
@@ -231,8 +253,17 @@ void FileProtocolSocket::datagramReceived(QByteArray data)
     // packets that are received for a second time are considered valid,
     // as they were parsed before
     // Also, we do not confirm receipt of confirmation packets!
-    if(!invalid && ID!=ConfirmReceipt::ID)
-        sendDatagram(ConfirmReceipt(packetIndex).toMessage());
+    if(!invalid && ID!=ConfirmReceipt::ID && ID!=ConfirmReceiptMulti::ID) {
+        if(canBeMultiConfirmed) {
+            receivedUnconfirmed<<packetIndex;
+            if(!receivedUnconfirmedTimeout.isActive())
+                receivedUnconfirmedTimeout.start();
+        }
+        else
+            sendDatagram(ConfirmReceipt(packetIndex).toMessage());
+
+    }
+
 }
 
 
@@ -264,7 +295,7 @@ void FileProtocolSocket::sendDatagram(QByteArray data)
 }
 void FileProtocolSocket::sendDatagramGuarded(QByteArray data, quint32 packetIndex)
 {
-    PacketGuard* guard = new PacketGuard(this, data);
+    PacketGuard* guard = new PacketGuard(this, data, 5, 500);
     guard->identifier = packetIndex;
     pendingPackets<<guard;
     QObject::connect(guard, &PacketGuard::sendingData, this, &FileProtocolSocket::sendDatagram, Qt::QueuedConnection);
@@ -320,13 +351,14 @@ void FileProtocolSocket::filterDatagrams()
     }
 }
 
-void FileProtocolSocket::notifyReceipt(quint32 packetIndex)
+void FileProtocolSocket::notifyReceipt(QList<quint32> packetIndexes)
 {
+
     QMutableListIterator<PacketGuard*> i(pendingPackets);
     bool hasPendingFilePackets = false;
     while (i.hasNext()) {
         PacketGuard* const guard = i.next();
-        if(guard->identifier == packetIndex) {
+        if(packetIndexes.contains(guard->identifier)) {
             //qInfo()<<"Receipt of packet #"<<packetIndex<<" ("<<guard->property("STRING")<<") confirmed!";
             delete guard;
             i.remove();
@@ -347,6 +379,16 @@ void FileProtocolSocket::notifyReceipt(quint32 packetIndex)
     if(pendingPackets.length() < PENDING_PACKET_LIMIT) {
         emit packetLimitNotExceeded();
     }
+}
+
+void FileProtocolSocket::confirmUnconfirmedPackets()
+{
+    if(receivedUnconfirmed.length()==0) {
+        return;
+    }
+    ConfirmReceiptMulti packets(receivedUnconfirmed);
+    sendDatagram(packets.toMessage());
+    receivedUnconfirmed.clear();
 }
 
 void FileProtocolSocket::pendingPacketFailed(PacketGuard* packet)

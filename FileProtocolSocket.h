@@ -8,6 +8,7 @@
 #include <QFileInfo>
 #include <QQueue>
 #include <QTime>
+#include <QTimer>
 
 class PacketGuard;
 class FileChunk;
@@ -36,7 +37,7 @@ signals:
     // When outgoing file transfer starts
     void fileSendStarted();
     // When packet delivery is confirmed
-    void receiptConfirmed(quint32 packetIndex);
+    void receiptsConfirmed(QList<quint32> packetIndex);
     // Used to init cleanup
     void fatalError();
     // Emitted when all packets are confirmed to be delivered
@@ -66,7 +67,9 @@ public slots:
     void filterDatagrams();
 
     // Call this to notify packet of given index that it was received
-    void notifyReceipt(quint32 packetIndex);
+    void notifyReceipt(QList<quint32> packetIndexes);
+    // Fire by timeout when it's time to confirm all buffered acket ids
+    void confirmUnconfirmedPackets();
 
     void pendingPacketFailed(PacketGuard* packet);
     // Gives the ammount of bytes transferred so far
@@ -77,6 +80,7 @@ public slots:
         return currentFile!=nullptr?currentFile->size():0;
     }
     QTime sendSinceStart() {return transferStart;}
+    quint32 timeSpentWaitingForConfirmation() const {return transferTimeSpentWaiting;}
 
 protected:
     QUdpSocket* socket;
@@ -87,14 +91,23 @@ protected:
     // list of packets that were received correctly and are to be ignored if received again
     // (although the receipt must be reconfirmed, otherwise the disconnect error will be trigerred)
     QQueue<quint32> receivedPackets;
-    static const quint32 MAX_RECEIVED_QUEUE_LENGTH = 400;
+    // This buffers received packets that were not confirmed yet
+    // every once in a while, all peding sockets are confirmed
+    QList<quint32> receivedUnconfirmed;
+    QTimer receivedUnconfirmedTimeout;
+
+    static const quint32 MAX_RECEIVED_QUEUE_LENGTH = 1000;
     // this is a recommended value
     // the program should avoid even generating packets when the ammount of pending packets is above this
     static const quint32 PENDING_PACKET_LIMIT = 200;
+    // maximum number of ms to wait before sending multi confirm packet
+    static const quint32 MULTI_CONFIRM_MAX_WAIT = 20;
     static const quint32 chunkSize = 400;
     // send file stuff
     QFile* currentFile;
     QTime transferStart;
+    // [ms] time spent waiting for packet confirmation
+    quint32 transferTimeSpentWaiting;
     // indicates the byte offset at hich the next chunk must begin
     // If currentFile is nullptr, this also indicates that fileSent was not emmited yet
     quint64 currentByte;
@@ -112,6 +125,9 @@ protected:
     };
 
     QList<FileChunkStruct> chunkBuffer;
+    // temporary profiling variables
+    quint32 timeSpentReading;
+    quint32 timeSpentClearingPending;
 };
 
 

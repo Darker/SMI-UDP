@@ -71,3 +71,13 @@ quint32 BasicDataClass::getIndex()
 }
 
 
+
+QDataStream&operator>>(QDataStream& str, ConfirmReceiptMulti*& ptr)
+{
+    ptr = new ConfirmReceiptMulti();
+    while(!str.atEnd()) {
+        quint32 index;
+        str>>index;
+        ptr->addIndex(index);
+    }
+}

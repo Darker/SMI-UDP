@@ -50,6 +50,21 @@ QString getTimeString(int time)
 
     return ret.arg(hours).arg(minutes).arg(seconds);
 }
+QString getTimeStringMinSecMs(int time)
+{
+    QString ret("%1:%2.%3");
+
+    int millis = time % 1000;
+    time/=1000;
+    int seconds = time % 60;
+    time/=60;
+    int minutes = time % 60;
+    time/=60;
+    //int hours = time % 60;
+    //time/=60;
+
+    return ret.arg(minutes).arg(seconds).arg(millis);
+}
 void SendProgress::updateInfo()
 {
     quint32 size = parent->sendFileSize();
@@ -61,8 +76,10 @@ void SendProgress::updateInfo()
     quint32 sinceLastCheck = qRound(lastCheck.elapsed()/1000.0);
     quint32 sentSinceLast = sent-lastSent;
     double speed = (sentSinceLast / (double)sinceLastCheck);
-    QTextStream(stdout)<<"  SPEED: "<<size_human(speed)<<"/s\n";
+    QTextStream(stdout)<<"  SPEED: "<<size_human(speed)<<"/s";
 
+    QTextStream(stdout)<<"  Wait: "<<getTimeStringMinSecMs(parent->timeSpentWaitingForConfirmation())<<"";
+    QTextStream(stdout)<<"\n";
     lastCheck.restart();
     lastSent = sent;
 }

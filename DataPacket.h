@@ -6,6 +6,7 @@
 #include <QIODevice>
 #include <memory>
 #include <QDebug>
+#include <QList>
 /*class Sendable {
     QByteArray toByteArray() const = 0;
     operator QByteArray() const {
@@ -33,7 +34,11 @@ public:
     BasicDataClass() : packetIndex(getIndex()) {
 
     }
-
+    // return true if a delay is allowed before confirming receipt of this packet
+    // this is used to buffer multiple packet ids before confirming receipt
+    virtual bool canBeConfirmedLater() const {
+        return true;
+    }
     virtual void setPacketIndex(quint32 newIndex) {
         packetIndex = newIndex;
     }
@@ -129,9 +134,7 @@ protected:
         else {
             stream<<startByte<<data;
         }
-
     }
-
 };
 
 class Ping: public BasicDataClass {
@@ -171,6 +174,38 @@ protected:
     virtual void toBytes(QDataStream& stream) const {
     }
 };
+class ConfirmReceiptMulti: public BasicDataClass {
+public:
+    static const quint32 ID = 100;
+    virtual quint32 getID() const override {return ID;}
+    ConfirmReceiptMulti(const QList<quint32>& ids)
+     : BasicDataClass()
+     , indexes(ids)
+    {
+
+    }
+    ConfirmReceiptMulti()
+     : BasicDataClass()
+    {
+
+    }
+    virtual QString toString() const {return "ConfirmReceipt - #"+QString::number(packetIndex);}
+
+    void addIndex(const quint32 index) {
+        indexes<<index;
+    }
+    void reset() {
+        indexes.clear();
+    }
+    QList<quint32> indexes;
+protected:
+    virtual void toBytes(QDataStream& stream) const {
+        foreach (const quint32 index, indexes) {
+            stream<<(quint32)index;
+        }
+    }
+
+};
 
 QDataStream& operator>>(QDataStream& str, FileHeader*& ptr);
 
@@ -179,6 +214,8 @@ QDataStream& operator>>(QDataStream& str, FileChunk*& ptr);
 QDataStream& operator>>(QDataStream& str, Ping*& ptr);
 
 QDataStream& operator>>(QDataStream& str, ConfirmReceipt*& ptr);
+
+QDataStream& operator>>(QDataStream& str, ConfirmReceiptMulti*& ptr);
 
 class DataPacket
 {

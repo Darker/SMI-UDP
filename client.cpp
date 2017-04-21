@@ -2,6 +2,7 @@
 #include <QCommandLineParser>
 #include "FileClient.h"
 #include <iostream>
+#include "QApplicationProfiler.h"
 void printUsage(const QString& additionalMessage="") {
     std::cout<< "Parameters: filename [-p port] [-a ip address]\n";
     if(!additionalMessage.isEmpty()) {
@@ -11,7 +12,7 @@ void printUsage(const QString& additionalMessage="") {
 
 int mainClient(int argc, char *argv[])
 {
-    QCoreApplication a(argc, argv);
+    QApplicationProfiler a(argc, argv);
     QStringList rawArguments(a.arguments());
     QCommandLineParser args;
     // "test.py" -p 6666 -a 192.168.3.13

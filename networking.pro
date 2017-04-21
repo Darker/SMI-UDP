@@ -2,10 +2,12 @@ QT += core
 QT -= gui
 QT += network
 CONFIG += c++11
-#ddd
+#dddd
 TARGET = networking
 CONFIG += console
 CONFIG -= app_bundle
+
+#QT += private
 
 TEMPLATE = app
 
@@ -22,7 +24,8 @@ SOURCES += main.cpp \
     CRC.cpp \
     Checksum.cpp \
     PacketGuard.cpp \
-    SendProgress.cpp
+    SendProgress.cpp \
+    QApplicationProfiler.cpp
 
 HEADERS += \
     FileServer.h \
@@ -35,5 +38,6 @@ HEADERS += \
     CRC.h \
     Checksum.h \
     PacketGuard.h \
-    SendProgress.h
+    SendProgress.h \
+    QApplicationProfiler.h
 #
