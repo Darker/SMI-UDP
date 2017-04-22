@@ -34,6 +34,9 @@ signals:
     void delivered(PacketGuard* self);
     // Emitted whenever data should be sent
     void sendingData(QByteArray data);
+
+    void failedSimple();
+    void deliveredSimple();
 public slots:
     // Called when the payload should be sent the first time
     void start();

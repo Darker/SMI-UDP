@@ -59,8 +59,8 @@ public slots:
 
     void sendDatagram(QByteArray data);
 
-    void sendDatagramGuarded(QByteArray data, quint32 packetIndex);
-    void sendDatagramGuarded(const BasicDataClass& data);
+    PacketGuard* sendDatagramGuarded(QByteArray data, quint32 packetIndex);
+    PacketGuard* sendDatagramGuarded(const BasicDataClass& data);
 
     void filterDatagram(QByteArray datagram, ClientID source);
     // Reads all datagrams from the socket and picks those that match client ID

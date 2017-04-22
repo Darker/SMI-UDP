@@ -29,6 +29,7 @@ void PacketGuard::confirmationReceived()
     timer->stop();
     delivered_ = true;
     emit delivered(this);
+    emit deliveredSimple();
 }
 
 void PacketGuard::timedOut()
@@ -41,6 +42,7 @@ void PacketGuard::timedOut()
     else {
         failed_ = true;
         emit failed(this);
+        emit failedSimple();
     }
 }
 

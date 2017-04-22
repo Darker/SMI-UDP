@@ -8,6 +8,8 @@ CONFIG += console
 CONFIG -= app_bundle
 
 #QT += private
+#IP KRISTYNA: 192.168.3.11
+#IP HOME PC: 192.168.1.163
 
 TEMPLATE = app
 

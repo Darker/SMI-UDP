@@ -100,12 +100,12 @@ public:
     const quint64 size;
 
     virtual QString toString() const {return "FileHeader - "+filename;}
+    virtual bool canBeConfirmedLater() const override {return false;}
 
 protected:
     virtual void toBytes(QDataStream& stream) const override {
         stream<<(QString)filename<<(quint64)size<<md5;
     }
-
 };
 
 

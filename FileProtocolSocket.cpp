@@ -46,13 +46,14 @@ void FileProtocolSocket::sendFile(QFileInfo filePath)
         transferStart.restart();
         transferTimeSpentWaiting = 0;
         FileHeader header(filePath.completeBaseName()+"."+filePath.suffix(), filePath.size(), Checksum::file(currentFile, QCryptographicHash::Md5));
-        sendDatagramGuarded(header);
+        PacketGuard* guard = sendDatagramGuarded(header);
 
         emit fileSendStarted();
 
         currentFile->seek(0);
         currentByte = 0;
-        emit fileChunkReady();
+        qInfo()<<"Waiting for the file header to be delivered. After that, file transfer will start.";
+        QObject::connect(guard, &PacketGuard::deliveredSimple, this, &FileProtocolSocket::fileChunkReady, Qt::QueuedConnection);
     }
 }
 
@@ -293,7 +294,7 @@ void FileProtocolSocket::sendDatagram(QByteArray data)
         throw NoTargetException();
     }
 }
-void FileProtocolSocket::sendDatagramGuarded(QByteArray data, quint32 packetIndex)
+PacketGuard* FileProtocolSocket::sendDatagramGuarded(QByteArray data, quint32 packetIndex)
 {
     PacketGuard* guard = new PacketGuard(this, data, 5, 500);
     guard->identifier = packetIndex;
@@ -301,9 +302,10 @@ void FileProtocolSocket::sendDatagramGuarded(QByteArray data, quint32 packetInde
     QObject::connect(guard, &PacketGuard::sendingData, this, &FileProtocolSocket::sendDatagram, Qt::QueuedConnection);
 
     guard->start();
+    return guard;
 }
 
-void FileProtocolSocket::sendDatagramGuarded(const BasicDataClass& data)
+PacketGuard* FileProtocolSocket::sendDatagramGuarded(const BasicDataClass& data)
 {
     PacketGuard* guard = new PacketGuard(this, data.toMessage());
     guard->identifier = data.getPacketIndex();
@@ -317,6 +319,7 @@ void FileProtocolSocket::sendDatagramGuarded(const BasicDataClass& data)
     QObject::connect(guard, &PacketGuard::sendingData, this, &FileProtocolSocket::sendDatagram, Qt::QueuedConnection);
 
     guard->start();
+    return guard;
 }
 
 
