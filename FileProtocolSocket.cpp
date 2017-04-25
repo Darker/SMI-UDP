@@ -25,7 +25,7 @@ FileProtocolSocket::FileProtocolSocket(QUdpSocket* parent, ClientID target) :
     QObject::connect(this, &FileProtocolSocket::receiptsConfirmed, this, &FileProtocolSocket::notifyReceipt, Qt::QueuedConnection);
     QObject::connect(&receivedUnconfirmedTimeout, &QTimer::timeout, this, &FileProtocolSocket::confirmUnconfirmedPackets);
     receivedUnconfirmedTimeout.setSingleShot(true);
-    receivedUnconfirmedTimeout.setInterval(MULTI_CONFIRM_MAX_WAIT);
+    receivedUnconfirmedTimeout.setInterval(maxPacketConfirmLatency);
 
     lastPingCheck.start();
 
@@ -459,7 +459,7 @@ void FileProtocolSocket::checkQueueStatus()
         // remember last ping check time
         lastPingCheck.start();
         PacketGuard* guard = sendDatagramGuarded(Ping("CONFIRM_PACKETS"), 800, 80);
-        QObject::connect(guard, &PacketGuard::deliveredSimple, [this, pingTimer]() {
+        QObject::connect(guard, &PacketGuard::deliveredSimple, [this]() {
             // calculate ping info
             if(pingHistory.size()>=maxPingHistory) {
                 quint16 oldestPing = pingHistory.dequeue();
@@ -472,7 +472,7 @@ void FileProtocolSocket::checkQueueStatus()
             this->maxPacketConfirmLatency = (quint32)qRound(avgPing/2.0);
 
             this->pingIsPending = false;
-            qDebug()<<"Ping:"<<pingTimer.elapsed()<<"ms";
+            qDebug()<<"Ping:"<<ping<<"ms";
         });
     }
 }

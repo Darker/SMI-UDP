@@ -116,7 +116,7 @@ protected:
     static const quint32 PENDING_PACKET_LIMIT = 100;
     // maximum number of ms to wait before sending multi confirm packet
     // this is auto adjusted based on latency, default is 1
-    quint32 maxPacketConfirmLatency;
+    quint16 maxPacketConfirmLatency;
 
     static const quint32 chunkSize = 450;
     // send file stuff
