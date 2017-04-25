@@ -23,6 +23,8 @@ protected:
     // used to compare speed
     quint32 lastSent;
     QTime lastCheck;
+    quint32 lastSendFailures;
+    quint32 lastCRCFailures;
 };
 
 #endif // SENDPROGRESS_H

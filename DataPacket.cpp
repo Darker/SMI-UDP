@@ -1,5 +1,7 @@
 #include "DataPacket.h"
 #include "Checksum.h"
+#include "crc32.h"
+#include <QDebug>
 /*
 DataPacket::DataPacket(quint32 id)
 {
@@ -11,7 +13,7 @@ DataPacket::DataPacket(QByteArray rawData)
 
 }
 */
-
+Crc32 helper;
 
 
 QDataStream&operator>>(QDataStream& str, FileHeader*& ptr)
@@ -63,6 +65,24 @@ FileHeader::FileHeader(const QString& filename, const quint64 size, const QByteA
   , size(size)
   , md5(checksum)
 {}
+
+QByteArray BasicDataClass::toMessage() const {
+    QByteArray buffer;
+    QDataStream stream(&buffer, QIODevice::WriteOnly);
+    const QByteArray body = toBytes();
+    stream<<(quint32)getID()<<packetIndex<<body;
+    const quint32 CRC = helper.calculate(buffer);
+    stream<<CRC;
+    /*if((qrand() % 100 == 5)) {
+        buffer[qrand()%buffer.size()] = 0;
+    }*/
+    //const quint32 size = buffer.size();
+
+    //const quint32 CRC_CHECK = Crc32::readFromByteArray(buffer, size-4);
+
+    //qDebug()<<"CRC: "<<CRC<<" check: "<<CRC_CHECK;
+    return buffer;
+}
 
 quint32 BasicDataClass::getIndex()
 {

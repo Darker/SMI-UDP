@@ -13,6 +13,8 @@ SendProgress::SendProgress(FileProtocolSocket *parent)
     : QObject(parent)
     , parent(parent)
     , lastSent(0)
+    , lastCRCFailures(0)
+    , lastSendFailures(0)
 {
     QObject::connect(&timer, &QTimer::timeout, this, &SendProgress::updateInfo);
     QObject::connect(parent, &FileProtocolSocket::fileSent, this, &SendProgress::done, Qt::QueuedConnection);
@@ -80,6 +82,13 @@ void SendProgress::updateInfo()
 
     QTextStream(stdout)<<"  Wait: "<<getTimeStringMinSecMs(parent->timeSpentWaitingForConfirmation())<<"";
     QTextStream(stdout)<<"\n";
+    // If there were errors:
+    if(lastSendFailures<parent->sendFailures || lastCRCFailures<parent->CRCFailures) {
+        QTextStream(stdout)<<"  ERRORS: send="<<(parent->sendFailures-lastSendFailures)<<" CRC="<<(parent->CRCFailures-lastCRCFailures)<<"\n";
+        lastSendFailures = parent->sendFailures;
+        lastCRCFailures = parent->CRCFailures;
+    }
+
     lastCheck.restart();
     lastSent = sent;
 }

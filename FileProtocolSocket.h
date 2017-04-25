@@ -60,7 +60,7 @@ public slots:
     void sendDatagram(QByteArray data);
 
     PacketGuard* sendDatagramGuarded(QByteArray data, quint32 packetIndex);
-    PacketGuard* sendDatagramGuarded(const BasicDataClass& data);
+    PacketGuard* sendDatagramGuarded(const BasicDataClass& data, const quint16 maxAttempts = 10, const quint32 timeout=200);
 
     void filterDatagram(QByteArray datagram, ClientID source);
     // Reads all datagrams from the socket and picks those that match client ID
@@ -99,7 +99,7 @@ protected:
     static const quint32 MAX_RECEIVED_QUEUE_LENGTH = 1000;
     // this is a recommended value
     // the program should avoid even generating packets when the ammount of pending packets is above this
-    static const quint32 PENDING_PACKET_LIMIT = 200;
+    static const quint32 PENDING_PACKET_LIMIT = 40;
     // maximum number of ms to wait before sending multi confirm packet
     static const quint32 MULTI_CONFIRM_MAX_WAIT = 20;
     static const quint32 chunkSize = 400;
@@ -125,9 +125,14 @@ protected:
     };
 
     QList<FileChunkStruct> chunkBuffer;
+public:
     // temporary profiling variables
     quint32 timeSpentReading;
     quint32 timeSpentClearingPending;
+
+    // Error counts
+    quint32 sendFailures;
+    quint32 CRCFailures;
 };
 
 

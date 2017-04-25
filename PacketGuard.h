@@ -29,6 +29,8 @@ public:
     // Returns true if all efforts to deliver failed
     bool isFailed() const {return failed_;}
     quint32 identifier;
+    // Timeout can increase with attempts, reducing bandwidth and increasing latency
+    int timeoutMultiplier;
 signals:
     void failed(PacketGuard* self);
     void delivered(PacketGuard* self);
@@ -55,6 +57,7 @@ protected:
     int attempts;
     bool delivered_;
     bool failed_;
+
 
 
 

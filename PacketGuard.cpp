@@ -11,6 +11,7 @@ PacketGuard::PacketGuard(FileProtocolSocket *parent, const QByteArray& payload, 
     , delivered_(false)
     , failed_(false)
     , identifier(0)
+    , timeoutMultiplier(0)
 {
     timer->setSingleShot(true);
     QObject::connect(this, &PacketGuard::sendingData, parent, &FileProtocolSocket::sendDatagram, Qt::QueuedConnection);
@@ -35,7 +36,8 @@ void PacketGuard::confirmationReceived()
 void PacketGuard::timedOut()
 {
     timer->stop();
-    qWarning()<<"Packet #"<<identifier<<"receipt not confirmed!"<<(attempts<maxAttempts?" ... retrying":" ... giving up");
+    if(attempts>=maxAttempts)
+        qWarning()<<"Packet #"<<identifier<<"receipt not confirmed!"<<(attempts<maxAttempts?" ... retrying":" ... giving up");
     if(attempts<maxAttempts) {
         sendData();
     }
@@ -55,6 +57,6 @@ void PacketGuard::sendData()
 
     emit sendingData(payload);
     attempts++;
-    timer->start(timeoutDuration);
+    timer->start(timeoutDuration + timeoutMultiplier*attempts);
     //QTimer::singleShot(timeoutDuration, this, &PacketGuard::timedOut, Qt::QueuedConnection);
 }

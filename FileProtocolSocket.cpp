@@ -5,6 +5,7 @@
 #include "Checksum.h"
 #include "PacketGuard.h"
 #include <functional>
+#include "crc32.h"
 FileProtocolSocket::FileProtocolSocket(QUdpSocket* parent, ClientID target) :
     QObject(parent)
   , socket(parent)
@@ -13,6 +14,8 @@ FileProtocolSocket::FileProtocolSocket(QUdpSocket* parent, ClientID target) :
   , currentFile(nullptr)
   , writeFile(nullptr)
   , currentByte(0)
+  , sendFailures(0)
+  , CRCFailures(0)
 {
     QObject::connect(this, &FileProtocolSocket::fileChunkReady, this, &FileProtocolSocket::sendNextFileChunk, Qt::QueuedConnection);
     QObject::connect(this, &FileProtocolSocket::receiptsConfirmed, this, &FileProtocolSocket::notifyReceipt, Qt::QueuedConnection);
@@ -46,7 +49,7 @@ void FileProtocolSocket::sendFile(QFileInfo filePath)
         transferStart.restart();
         transferTimeSpentWaiting = 0;
         FileHeader header(filePath.completeBaseName()+"."+filePath.suffix(), filePath.size(), Checksum::file(currentFile, QCryptographicHash::Md5));
-        PacketGuard* guard = sendDatagramGuarded(header);
+        PacketGuard* guard = sendDatagramGuarded(header, 200, 250);
 
         emit fileSendStarted();
 
@@ -66,7 +69,7 @@ void FileProtocolSocket::sendNextFileChunk()
         const QByteArray data(currentFile->read(chunkSize));
         if(data.length()>0) {
             FileChunk chunk(currentByte, data);
-            sendDatagramGuarded(chunk);
+            sendDatagramGuarded(chunk, 50, 200);
 
             currentByte+=data.length();
         }
@@ -78,7 +81,7 @@ void FileProtocolSocket::sendNextFileChunk()
         }
         else {
             //qInfo()<<"Pausing file sending until pending sockets are confirmed.";
-            // This holds the connection to tist object signal, so that we can disconnect it later
+            // This holds the connection to object signal, so that we can disconnect it later
             std::shared_ptr<QMetaObject::Connection> connection(new QMetaObject::Connection);
             // if this is true, then our connection is disconnected and the signal should be ignored
             std::shared_ptr<bool> disconnectedAlready(new bool);
@@ -172,6 +175,14 @@ void FileProtocolSocket::datagramReceived(QByteArray data)
     bool invalid = false;
     // CRC validation should appear here
     // ...
+    const quint32 size = data.size();
+    const quint32 REMOTE_CRC = Crc32::readFromByteArray(data, size-4);
+    const quint32 MY_CRC = Crc32::calculate(data, 0, data.size()-5);
+    if(REMOTE_CRC != MY_CRC) {
+        // Ignore this data
+        CRCFailures++;
+        return;
+    }
 
     QDataStream mainStream(&data, QIODevice::ReadOnly);
     quint32 ID;
@@ -180,7 +191,7 @@ void FileProtocolSocket::datagramReceived(QByteArray data)
 
     // See if the value was received already
     bool received = false;
-    bool canBeMultiConfirmed = true;
+    quint16 confirmDelay = 0;
     if(receivedPackets.contains(packetIndex)) {
         received = true;
     }
@@ -245,7 +256,7 @@ void FileProtocolSocket::datagramReceived(QByteArray data)
             if(parsedData->getID()!=FileChunk::ID)
                 qInfo()<<"Received: "<<parsedData->toString();
             // check if this packet must be confirmed immediatelly
-            canBeMultiConfirmed = parsedData->canBeConfirmedLater();
+            confirmDelay = parsedData->maxConfirmDelay();
             delete parsedData;
         }
     }
@@ -255,13 +266,13 @@ void FileProtocolSocket::datagramReceived(QByteArray data)
     // as they were parsed before
     // Also, we do not confirm receipt of confirmation packets!
     if(!invalid && ID!=ConfirmReceipt::ID && ID!=ConfirmReceiptMulti::ID) {
-        if(canBeMultiConfirmed) {
-            receivedUnconfirmed<<packetIndex;
-            if(!receivedUnconfirmedTimeout.isActive())
-                receivedUnconfirmedTimeout.start();
+        receivedUnconfirmed<<packetIndex;
+        if(confirmDelay>0) {
+            if(!receivedUnconfirmedTimeout.isActive() || receivedUnconfirmedTimeout.remainingTime()>confirmDelay)
+                receivedUnconfirmedTimeout.start(confirmDelay);
         }
         else
-            sendDatagram(ConfirmReceipt(packetIndex).toMessage());
+            confirmUnconfirmedPackets();
 
     }
 
@@ -283,8 +294,10 @@ void FileProtocolSocket::sendDatagram(QByteArray data)
         //qInfo()<<"Sending "+QString::number(data.length())+" bytes of data.";
         if(bytesWritten<=0) {
             QString error(socket->errorString());
+            sendFailures++;
             // let's see what happens, if I act as if no error happened
-            throw ConnectionError(QString("Cannot send packet: ")+error);
+            //throw ConnectionError(QString("Cannot send packet: ")+error);
+            //qCritical()<<QString("Cannot send packet: ")+error;
         }
         else {
             // Wait for confirmation of receipt
@@ -296,7 +309,7 @@ void FileProtocolSocket::sendDatagram(QByteArray data)
 }
 PacketGuard* FileProtocolSocket::sendDatagramGuarded(QByteArray data, quint32 packetIndex)
 {
-    PacketGuard* guard = new PacketGuard(this, data, 5, 500);
+    PacketGuard* guard = new PacketGuard(this, data, 25, 500);
     guard->identifier = packetIndex;
     pendingPackets<<guard;
     QObject::connect(guard, &PacketGuard::sendingData, this, &FileProtocolSocket::sendDatagram, Qt::QueuedConnection);
@@ -305,15 +318,18 @@ PacketGuard* FileProtocolSocket::sendDatagramGuarded(QByteArray data, quint32 pa
     return guard;
 }
 
-PacketGuard* FileProtocolSocket::sendDatagramGuarded(const BasicDataClass& data)
+PacketGuard* FileProtocolSocket::sendDatagramGuarded(const BasicDataClass& data, const quint16 maxAttempts, const quint32 timeout)
 {
-    PacketGuard* guard = new PacketGuard(this, data.toMessage());
+    PacketGuard* guard = new PacketGuard(this, data.toMessage(), maxAttempts, timeout);
     guard->identifier = data.getPacketIndex();
     // Additional info
     guard->setProperty("STRING", QVariant::fromValue(data.toString()));
     guard->setProperty("IS_FILE_PACKET", QVariant::fromValue(data.getID()==FileHeader::ID || data.getID()==FileChunk::ID));
     if(data.getID()!=FileChunk::ID)
         qInfo()<<"Sending: "<<data.toString();
+    else {
+        //guard->timeoutMultiplier = 500;
+    }
 
     pendingPackets<<guard;
     QObject::connect(guard, &PacketGuard::sendingData, this, &FileProtocolSocket::sendDatagram, Qt::QueuedConnection);
@@ -363,7 +379,8 @@ void FileProtocolSocket::notifyReceipt(QList<quint32> packetIndexes)
         PacketGuard* const guard = i.next();
         if(packetIndexes.contains(guard->identifier)) {
             //qInfo()<<"Receipt of packet #"<<packetIndex<<" ("<<guard->property("STRING")<<") confirmed!";
-            delete guard;
+            guard->confirmationReceived();
+            guard->deleteLater();
             i.remove();
         }
         else {

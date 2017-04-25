@@ -36,8 +36,8 @@ public:
     }
     // return true if a delay is allowed before confirming receipt of this packet
     // this is used to buffer multiple packet ids before confirming receipt
-    virtual bool canBeConfirmedLater() const {
-        return true;
+    virtual quint16 maxConfirmDelay() const {
+        return 20;
     }
     virtual void setPacketIndex(quint32 newIndex) {
         packetIndex = newIndex;
@@ -53,12 +53,7 @@ public:
         return buf;
     }
     // creates the wrapping message structure around the main data
-    virtual QByteArray toMessage() const {
-        QByteArray buffer;
-        QDataStream stream(&buffer, QIODevice::WriteOnly);
-        stream<<(quint32)getID()<<packetIndex<<toBytes();
-        return buffer;
-    }
+    virtual QByteArray toMessage() const;
     virtual QString toString() const = 0;
     virtual ~BasicDataClass() {}
 
@@ -100,7 +95,7 @@ public:
     const quint64 size;
 
     virtual QString toString() const {return "FileHeader - "+filename;}
-    virtual bool canBeConfirmedLater() const override {return false;}
+    virtual quint16 maxConfirmDelay() const override {return 0;}
 
 protected:
     virtual void toBytes(QDataStream& stream) const override {
@@ -120,6 +115,7 @@ public:
       , data(data)
     {}
     virtual QString toString() const {return "FileChunk - "+QString::number(data.length(), 10)+QString("bytes");}
+    virtual quint16 maxConfirmDelay() const override {return 100;}
     const quint64 startByte;
     const QByteArray data;
 protected:
@@ -134,6 +130,30 @@ protected:
         else {
             stream<<startByte<<data;
         }
+    }
+};
+class FileChunksRequest: public BasicDataClass {
+public:
+    static const quint32 ID = 3;
+    virtual quint32 getID() const {return ID;}
+    /**
+     * @brief FileChunksRequest
+     * @param offsets positions to start reading
+     * @param length MAXIMUM length of a single fragment
+     *               note that other side is not required to send exactly
+     *               length bytes per chunk, just less or equal to given length
+     */
+    FileChunksRequest(const QList<quint64> offsets, const quint32 length) :
+        BasicDataClass()
+      , offsets(offsets)
+      , length(length)
+    {}
+    virtual QString toString() const {return "FileChunkRequest";}
+    const QList<quint64> offsets;
+    const quint32 length;
+protected:
+    virtual void toBytes(QDataStream& stream) const override {
+        stream<<offsets<<length;
     }
 };
 
@@ -151,6 +171,7 @@ public:
         return BasicDataClass::toBytes();
     }
     virtual QString toString() const {return "Ping - "+message;}
+    virtual quint16 maxConfirmDelay() const override {return 0;}
 protected:
     virtual void toBytes(QDataStream& stream) const {
         stream<<message;
@@ -210,6 +231,7 @@ protected:
 QDataStream& operator>>(QDataStream& str, FileHeader*& ptr);
 
 QDataStream& operator>>(QDataStream& str, FileChunk*& ptr);
+QDataStream& operator>>(QDataStream& str, FileChunksRequest*& ptr);
 
 QDataStream& operator>>(QDataStream& str, Ping*& ptr);
 
