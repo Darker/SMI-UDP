@@ -265,8 +265,14 @@ void FileProtocolSocket::datagramReceived(QByteArray data)
                 quint32 noop = receivedPackets.dequeue();
             }
             // debug and cleanup
+
             if(parsedData->getID()!=FileChunk::ID)
-                qInfo()<<"Received: "<<parsedData->toString();
+            {
+                const QString msg(parsedData->toString());
+                if(!msg.contains("CONFIRM_PACKETS"))
+                    qInfo()<<"Received: "<<parsedData->toString();
+            }
+
             // check if this packet must be confirmed immediatelly
             confirmDelay = parsedData->maxConfirmDelay();
             delete parsedData;
@@ -287,6 +293,7 @@ void FileProtocolSocket::datagramReceived(QByteArray data)
         }
         else
             confirmUnconfirmedPackets();
+        checkQueueStatus();
 
     }
 
@@ -347,9 +354,11 @@ PacketGuard* FileProtocolSocket::sendDatagramGuarded(const BasicDataClass& data,
     // Additional info
     guard->setProperty("STRING", QVariant::fromValue(data.toString()));
     guard->setProperty("IS_FILE_PACKET", QVariant::fromValue(data.getID()==FileHeader::ID || data.getID()==FileChunk::ID));
-    if(data.getID()!=FileChunk::ID)
-        qInfo()<<"Sending: "<<data.toString();
-    else {
+    if(data.getID()!=FileChunk::ID) {
+        const QString msg(data.toString());
+        if(!msg.contains("CONFIRM_PACKETS"))
+            qInfo()<<"Sending: "<<data.toString();
+    } else {
         //guard->timeoutMultiplier = 500;
     }
 
@@ -454,11 +463,12 @@ void FileProtocolSocket::checkQueueStatus()
 {
     if(pingIsPending)
         return;
-    if(pendingPackets.size()*2 > PENDING_PACKET_LIMIT || lastPingCheck.elapsed()>1000) {
+    const bool isConfirmPackets = pendingPackets.size()*2 > PENDING_PACKET_LIMIT;
+    if(isConfirmPackets || lastPingCheck.elapsed()>1000) {
         pingIsPending = true;
         // remember last ping check time
         lastPingCheck.start();
-        PacketGuard* guard = sendDatagramGuarded(Ping("CONFIRM_PACKETS"), 800, 80);
+        PacketGuard* guard = sendDatagramGuarded(Ping(isConfirmPackets?"CONFIRM_PACKETS":"PING"), 800, 80);
         QObject::connect(guard, &PacketGuard::deliveredSimple, [this]() {
             // calculate ping info
             if(pingHistory.size()>=maxPingHistory) {
@@ -472,7 +482,7 @@ void FileProtocolSocket::checkQueueStatus()
             this->maxPacketConfirmLatency = (quint32)qRound(avgPing/2.0);
 
             this->pingIsPending = false;
-            qDebug()<<"Ping:"<<ping<<"ms";
+            //qDebug()<<"Ping:"<<ping<<"ms";
         });
     }
 }
