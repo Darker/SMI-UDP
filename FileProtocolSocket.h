@@ -96,7 +96,7 @@ protected:
     // It also manages ping related information
     void checkQueueStatus();
     bool pingIsPending;
-    static quint16 maxPingHistory = 20;
+    static const quint16 maxPingHistory = 20;
     QQueue<quint16> pingHistory;
     // average ping = pingSum/pingHistory.size()
     quint16 pingSum;
