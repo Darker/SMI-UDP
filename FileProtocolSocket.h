@@ -9,6 +9,7 @@
 #include <QQueue>
 #include <QTime>
 #include <QTimer>
+#include <QElapsedTimer>
 
 class PacketGuard;
 class FileChunk;
@@ -95,6 +96,11 @@ protected:
     // It also manages ping related information
     void checkQueueStatus();
     bool pingIsPending;
+    static quint16 maxPingHistory = 20;
+    QQueue<quint16> pingHistory;
+    // average ping = pingSum/pingHistory.size()
+    quint16 pingSum;
+    QElapsedTimer lastPingCheck;
 
     // list of packets that were received correctly and are to be ignored if received again
     // (although the receipt must be reconfirmed, otherwise the disconnect error will be trigerred)
@@ -109,7 +115,9 @@ protected:
     // the program should avoid even generating packets when the ammount of pending packets is above this
     static const quint32 PENDING_PACKET_LIMIT = 100;
     // maximum number of ms to wait before sending multi confirm packet
-    static const quint32 MULTI_CONFIRM_MAX_WAIT = 20;
+    // this is auto adjusted based on latency, default is 1
+    quint32 maxPacketConfirmLatency;
+
     static const quint32 chunkSize = 450;
     // send file stuff
     QFile* currentFile;

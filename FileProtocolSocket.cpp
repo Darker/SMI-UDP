@@ -18,12 +18,16 @@ FileProtocolSocket::FileProtocolSocket(QUdpSocket* parent, ClientID target) :
   , sendFailures(0)
   , CRCFailures(0)
   , pingIsPending(false)
+  , pingSum(0)
+  , maxPacketConfirmLatency(1)
 {
     QObject::connect(this, &FileProtocolSocket::fileChunkReady, this, &FileProtocolSocket::sendNextFileChunk, Qt::QueuedConnection);
     QObject::connect(this, &FileProtocolSocket::receiptsConfirmed, this, &FileProtocolSocket::notifyReceipt, Qt::QueuedConnection);
     QObject::connect(&receivedUnconfirmedTimeout, &QTimer::timeout, this, &FileProtocolSocket::confirmUnconfirmedPackets);
     receivedUnconfirmedTimeout.setSingleShot(true);
     receivedUnconfirmedTimeout.setInterval(MULTI_CONFIRM_MAX_WAIT);
+
+    lastPingCheck.start();
 
 }
 
@@ -274,6 +278,8 @@ void FileProtocolSocket::datagramReceived(QByteArray data)
     // as they were parsed before
     // Also, we do not confirm receipt of confirmation packets!
     if(!invalid && ID!=ConfirmReceipt::ID && ID!=ConfirmReceiptMulti::ID) {
+        confirmDelay = qMin(confirmDelay, maxPacketConfirmLatency);
+
         receivedUnconfirmed<<packetIndex;
         if(confirmDelay>0) {
             if(!receivedUnconfirmedTimeout.isActive() || receivedUnconfirmedTimeout.remainingTime()>confirmDelay)
@@ -448,12 +454,23 @@ void FileProtocolSocket::checkQueueStatus()
 {
     if(pingIsPending)
         return;
-    if(pendingPackets.size()*2 > PENDING_PACKET_LIMIT) {
+    if(pendingPackets.size()*2 > PENDING_PACKET_LIMIT || lastPingCheck.elapsed()>1000) {
         pingIsPending = true;
-        QElapsedTimer pingTimer;
-        pingTimer.start();
+        // remember last ping check time
+        lastPingCheck.start();
         PacketGuard* guard = sendDatagramGuarded(Ping("CONFIRM_PACKETS"), 800, 80);
         QObject::connect(guard, &PacketGuard::deliveredSimple, [this, pingTimer]() {
+            // calculate ping info
+            if(pingHistory.size()>=maxPingHistory) {
+                quint16 oldestPing = pingHistory.dequeue();
+                pingSum-=oldestPing;
+            }
+            const quint16 ping = lastPingCheck.elapsed();
+            pingSum += ping;
+            // use average ping to set the max confirm latency
+            const double avgPing = pingSum/(double)pingHistory.size();
+            this->maxPacketConfirmLatency = (quint32)qRound(avgPing/2.0);
+
             this->pingIsPending = false;
             qDebug()<<"Ping:"<<pingTimer.elapsed()<<"ms";
         });
