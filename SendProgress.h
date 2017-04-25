@@ -25,6 +25,9 @@ protected:
     QTime lastCheck;
     quint32 lastSendFailures;
     quint32 lastCRCFailures;
+
+    quint64 lastSentBytes;
+    quint64 lastReceivedBytes;
 };
 
 #endif // SENDPROGRESS_H

@@ -114,10 +114,15 @@ public:
       , startByte(startByte)
       , data(data)
     {}
+    FileChunk() :
+        BasicDataClass()
+      , startByte(0)
+      , data(data)
+    {}
     virtual QString toString() const {return "FileChunk - "+QString::number(data.length(), 10)+QString("bytes");}
     virtual quint16 maxConfirmDelay() const override {return 100;}
-    const quint64 startByte;
-    const QByteArray data;
+    quint64 startByte;
+    QByteArray data;
 protected:
     virtual void toBytes(QDataStream& stream) const override {
         // Random error

@@ -28,10 +28,10 @@ QDataStream&operator>>(QDataStream& str, FileHeader*& ptr)
 
 QDataStream&operator>>(QDataStream& str, FileChunk*& ptr)
 {
-    quint64 startByte;
-    QByteArray data;
-    str>>startByte>>data;
-    ptr = new FileChunk(startByte, data);
+    ptr = new FileChunk();
+
+    str>>ptr->startByte>>ptr->data;
+
     return str;
 }
 
@@ -53,6 +53,16 @@ QDataStream&operator>>(QDataStream& str, ConfirmReceipt*& ptr)
     ptr = new ConfirmReceipt(0);
     return str;
 }
+QDataStream&operator>>(QDataStream& str, ConfirmReceiptMulti*& ptr)
+{
+    ptr = new ConfirmReceiptMulti();
+    while(!str.atEnd()) {
+        quint32 index;
+        str>>index;
+        ptr->addIndex(index);
+    }
+}
+
 FileHeader::FileHeader(const QString& filename, const quint64 size) :
     BasicDataClass()
   , filename(filename)
@@ -92,12 +102,4 @@ quint32 BasicDataClass::getIndex()
 
 
 
-QDataStream&operator>>(QDataStream& str, ConfirmReceiptMulti*& ptr)
-{
-    ptr = new ConfirmReceiptMulti();
-    while(!str.atEnd()) {
-        quint32 index;
-        str>>index;
-        ptr->addIndex(index);
-    }
-}
+

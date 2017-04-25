@@ -49,7 +49,7 @@ void FileProtocolSocket::sendFile(QFileInfo filePath)
         transferStart.restart();
         transferTimeSpentWaiting = 0;
         FileHeader header(filePath.completeBaseName()+"."+filePath.suffix(), filePath.size(), Checksum::file(currentFile, QCryptographicHash::Md5));
-        PacketGuard* guard = sendDatagramGuarded(header, 200, 250);
+        PacketGuard* guard = sendDatagramGuarded(header, 400, 250);
 
         emit fileSendStarted();
 
@@ -69,7 +69,7 @@ void FileProtocolSocket::sendNextFileChunk()
         const QByteArray data(currentFile->read(chunkSize));
         if(data.length()>0) {
             FileChunk chunk(currentByte, data);
-            sendDatagramGuarded(chunk, 50, 200);
+            sendDatagramGuarded(chunk, 50, 900);
 
             currentByte+=data.length();
         }
@@ -94,7 +94,7 @@ void FileProtocolSocket::sendNextFileChunk()
                     //qWarning()<<"Multiple calls to transfer resume lambda function!";
                     return;
                 }
-                if(this->pendingPackets.length() <PENDING_PACKET_LIMIT-5) {
+                if(this->pendingPackets.length() <PENDING_PACKET_LIMIT-1) {
                     //qInfo()<<"Resuming transfer.";
                     *disconnectedAlready = true;
                     QObject::disconnect(*connection);
@@ -173,6 +173,8 @@ void FileProtocolSocket::fileChunkReceived(QByteArray data, quint64 offset)
 void FileProtocolSocket::datagramReceived(QByteArray data)
 {
     bool invalid = false;
+
+    receivedBytes += data.length();
     // CRC validation should appear here
     // ...
     const quint32 size = data.size();
@@ -301,6 +303,9 @@ void FileProtocolSocket::sendDatagram(QByteArray data)
         }
         else {
             // Wait for confirmation of receipt
+            sentBytes+=bytesWritten;
+            if(bytesWritten!=data.size())
+                qDebug()<<"sent "<<data.size()<<" but written "<<bytesWritten;
         }
     }
     else {

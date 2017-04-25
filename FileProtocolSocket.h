@@ -99,10 +99,10 @@ protected:
     static const quint32 MAX_RECEIVED_QUEUE_LENGTH = 1000;
     // this is a recommended value
     // the program should avoid even generating packets when the ammount of pending packets is above this
-    static const quint32 PENDING_PACKET_LIMIT = 40;
+    static const quint32 PENDING_PACKET_LIMIT = 6;
     // maximum number of ms to wait before sending multi confirm packet
     static const quint32 MULTI_CONFIRM_MAX_WAIT = 20;
-    static const quint32 chunkSize = 400;
+    static const quint32 chunkSize = 450;
     // send file stuff
     QFile* currentFile;
     QTime transferStart;
@@ -129,6 +129,10 @@ public:
     // temporary profiling variables
     quint32 timeSpentReading;
     quint32 timeSpentClearingPending;
+
+    // Raw data transfer
+    quint64 receivedBytes;
+    quint64 sentBytes;
 
     // Error counts
     quint32 sendFailures;

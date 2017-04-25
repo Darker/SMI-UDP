@@ -36,7 +36,7 @@ void PacketGuard::confirmationReceived()
 void PacketGuard::timedOut()
 {
     timer->stop();
-    if(attempts>=maxAttempts)
+    if(true || attempts>=maxAttempts)
         qWarning()<<"Packet #"<<identifier<<"receipt not confirmed!"<<(attempts<maxAttempts?" ... retrying":" ... giving up");
     if(attempts<maxAttempts) {
         sendData();
