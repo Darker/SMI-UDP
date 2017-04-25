@@ -477,6 +477,7 @@ void FileProtocolSocket::checkQueueStatus()
             }
             const quint16 ping = lastPingCheck.elapsed();
             pingSum += ping;
+            pingHistory<<ping;
             // use average ping to set the max confirm latency
             const double avgPing = pingSum/(double)pingHistory.size();
             this->maxPacketConfirmLatency = (quint32)qRound(avgPing/2.0);
