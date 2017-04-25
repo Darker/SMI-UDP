@@ -31,6 +31,15 @@ public:
     quint32 identifier;
     // Timeout can increase with attempts, reducing bandwidth and increasing latency
     int timeoutMultiplier;
+
+    class CompareAge // public std::binary_function<bool, const T*, const T*>
+    {
+    public:
+      bool operator()(const PacketGuard* a, const PacketGuard* b) const
+      {
+        return a->timestamp()<b->timestamp();
+      }
+    };
 signals:
     void failed(PacketGuard* self);
     void delivered(PacketGuard* self);
@@ -48,6 +57,9 @@ public slots:
     // This slot is used to indicate that confirmation timed out
     // Payload will be re-sent at this point
     void timedOut();
+    // get the age of this guard, allowing to prioritize older packets
+    quint64 age() const;
+    quint64 timestamp() const {return creationTimestamp;}
 protected:
     FileProtocolSocket* parent;
     const QByteArray payload;
@@ -57,10 +69,7 @@ protected:
     int attempts;
     bool delivered_;
     bool failed_;
-
-
-
-
+    const quint64 creationTimestamp;
     // sends data, increments number of attempts and starts timeout
     void sendData();
 };

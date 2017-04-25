@@ -2,6 +2,7 @@
 #include "DataPacket.h"
 #include <QDebug>
 #include <QFile>
+#include <QElapsedTimer>
 #include "Checksum.h"
 #include "PacketGuard.h"
 #include <functional>
@@ -16,12 +17,14 @@ FileProtocolSocket::FileProtocolSocket(QUdpSocket* parent, ClientID target) :
   , currentByte(0)
   , sendFailures(0)
   , CRCFailures(0)
+  , pingIsPending(false)
 {
     QObject::connect(this, &FileProtocolSocket::fileChunkReady, this, &FileProtocolSocket::sendNextFileChunk, Qt::QueuedConnection);
     QObject::connect(this, &FileProtocolSocket::receiptsConfirmed, this, &FileProtocolSocket::notifyReceipt, Qt::QueuedConnection);
     QObject::connect(&receivedUnconfirmedTimeout, &QTimer::timeout, this, &FileProtocolSocket::confirmUnconfirmedPackets);
     receivedUnconfirmedTimeout.setSingleShot(true);
     receivedUnconfirmedTimeout.setInterval(MULTI_CONFIRM_MAX_WAIT);
+
 }
 
 QDateTime FileProtocolSocket::getLastActivity() const
@@ -87,6 +90,9 @@ void FileProtocolSocket::sendNextFileChunk()
             std::shared_ptr<bool> disconnectedAlready(new bool);
             *disconnectedAlready = false;
             QTime startedWaiting;
+            // resend all packets again forcing other side to reconfirm them
+            forceResendPackets();
+
             startedWaiting.start();
 
             *connection = connect(this, &FileProtocolSocket::packetLimitNotExceeded, this, [connection, this, disconnectedAlready, startedWaiting]() {
@@ -285,7 +291,7 @@ void FileProtocolSocket::datagramReceived(QByteArray data)
 void FileProtocolSocket::sendDatagram(QByteArray data)
 {
     if(target) {
-        int bytesWritten = -1;
+        int bytesWritten = -1;        
         // if socket is connected to something
         if(socket->state() == QAbstractSocket::BoundState && socket->isOpen()) {
             bytesWritten = socket->write(data);
@@ -304,8 +310,13 @@ void FileProtocolSocket::sendDatagram(QByteArray data)
         else {
             // Wait for confirmation of receipt
             sentBytes+=bytesWritten;
-            if(bytesWritten!=data.size())
-                qDebug()<<"sent "<<data.size()<<" but written "<<bytesWritten;
+//            QDataStream mainStream(&data, QIODevice::ReadOnly);
+//            quint32 ID;
+//            quint32 packetIndex;
+//            mainStream>>ID>>packetIndex;
+//            qDebug()<<"Sending packet #"<<packetIndex;
+//            if(bytesWritten!=data.size())
+//                qDebug()<<"sent "<<data.size()<<" but written "<<bytesWritten;
         }
     }
     else {
@@ -340,6 +351,7 @@ PacketGuard* FileProtocolSocket::sendDatagramGuarded(const BasicDataClass& data,
     QObject::connect(guard, &PacketGuard::sendingData, this, &FileProtocolSocket::sendDatagram, Qt::QueuedConnection);
 
     guard->start();
+    checkQueueStatus();
     return guard;
 }
 
@@ -416,7 +428,34 @@ void FileProtocolSocket::confirmUnconfirmedPackets()
     receivedUnconfirmed.clear();
 }
 
+void FileProtocolSocket::forceResendPackets()
+{
+    //qSort(pendingPackets.begin(), pendingPackets.end(), PacketGuard::CompareAge());
+    quint16 resendMax = 10;
+    Q_FOREACH(PacketGuard* g, pendingPackets) {
+        if(--resendMax == 0)
+            break;
+        g->timedOut();
+    }
+}
+
 void FileProtocolSocket::pendingPacketFailed(PacketGuard* packet)
 {
     qWarning()<<"Packet #"<<packet->identifier<<" failed to reach destination!";
+}
+
+void FileProtocolSocket::checkQueueStatus()
+{
+    if(pingIsPending)
+        return;
+    if(pendingPackets.size()*2 > PENDING_PACKET_LIMIT) {
+        pingIsPending = true;
+        QElapsedTimer pingTimer;
+        pingTimer.start();
+        PacketGuard* guard = sendDatagramGuarded(Ping("CONFIRM_PACKETS"), 800, 80);
+        QObject::connect(guard, &PacketGuard::deliveredSimple, [this, pingTimer]() {
+            this->pingIsPending = false;
+            qDebug()<<"Ping:"<<pingTimer.elapsed()<<"ms";
+        });
+    }
 }

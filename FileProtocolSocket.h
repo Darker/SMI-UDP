@@ -70,6 +70,8 @@ public slots:
     void notifyReceipt(QList<quint32> packetIndexes);
     // Fire by timeout when it's time to confirm all buffered acket ids
     void confirmUnconfirmedPackets();
+    // If the queue of pending packets is overcrowded, resend tem forcefully
+    void forceResendPackets();
 
     void pendingPacketFailed(PacketGuard* packet);
     // Gives the ammount of bytes transferred so far
@@ -88,6 +90,12 @@ protected:
     bool handlesAllDatagrams;
     // Pending unconfirmed packets
     QList<PacketGuard*> pendingPackets;
+    // Tries to clear pending packet queue by sending ping packet to the server which forces
+    // the server to instantly send all packet confirmations
+    // It also manages ping related information
+    void checkQueueStatus();
+    bool pingIsPending;
+
     // list of packets that were received correctly and are to be ignored if received again
     // (although the receipt must be reconfirmed, otherwise the disconnect error will be trigerred)
     QQueue<quint32> receivedPackets;
@@ -99,7 +107,7 @@ protected:
     static const quint32 MAX_RECEIVED_QUEUE_LENGTH = 1000;
     // this is a recommended value
     // the program should avoid even generating packets when the ammount of pending packets is above this
-    static const quint32 PENDING_PACKET_LIMIT = 6;
+    static const quint32 PENDING_PACKET_LIMIT = 100;
     // maximum number of ms to wait before sending multi confirm packet
     static const quint32 MULTI_CONFIRM_MAX_WAIT = 20;
     static const quint32 chunkSize = 450;

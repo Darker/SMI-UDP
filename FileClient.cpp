@@ -24,15 +24,6 @@ void FileClient::receiveData()
 
 }
 
-void FileClient::sayHello()
-{
-    const Ping pingPacket("Hello server!");
-    QByteArray buffer(pingPacket.toMessage());
-    /*QDataStream stream(&buffer, QIODevice::WriteOnly);
-    stream<<pingPacket.getID()<<pingPacket.toBytes();*/
-
-    smartSocket->sendDatagram(pingPacket.toMessage());
-}
 
 void FileClient::sendFile(QString filename)
 {
