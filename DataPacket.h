@@ -117,7 +117,7 @@ public:
     FileChunk() :
         BasicDataClass()
       , startByte(0)
-      , data(data)
+      , data()
     {}
     virtual QString toString() const {return "FileChunk - "+QString::number(data.length(), 10)+QString("bytes");}
     virtual quint16 maxConfirmDelay() const override {return 100;}

@@ -16,7 +16,6 @@ signals:
 public slots:
     void receiveData();
 
-    void sayHello();
     //void sendFile();
     void sendFile(QString filename);
 protected:
