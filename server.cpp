@@ -10,6 +10,7 @@ int mainServer(int argc, char *argv[])
     QCommandLineParser args;
     QStringList rawArguments(a.arguments());
     args.addOption(QCommandLineOption("p", "Port number", "port", "6660"));
+    args.addOption(QCommandLineOption("b", "Enable server broadcasting"));
     args.process(rawArguments);
     qint64 port = 6660;
     if(args.isSet("p")) {
@@ -25,6 +26,10 @@ int mainServer(int argc, char *argv[])
     if(port!=0) {
         FileServer server(port, &a);
         std::cout<<"Listenning on 0.0.0.0:"<<port<<'\n';
+        if(args.isSet("b")) {
+            std::cout<<"    Also broadcasting server\n";
+            server.startBroadcast();
+        }
         //FileClient client(QHostAddress::LocalHost, 6660, &a);
         return a.exec();
     }

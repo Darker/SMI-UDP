@@ -72,19 +72,27 @@ void FileProtocolSocket::sendNextFileChunk()
     //QFile file(currentFile.absoluteFilePath());
     //file.open(QIODevice::ReadOnly);
     //file.seek(currentByte);
-    for(int i=0; i<10 && pendingPackets.length()<PENDING_PACKET_LIMIT; ++i) {
+    for(int i=0; i<1 && pendingPackets.length()<PENDING_PACKET_LIMIT; ++i) {
         const QByteArray data(currentFile->read(chunkSize));
         if(data.length()>0) {
             FileChunk chunk(currentByte, data);
             sendDatagramGuarded(chunk, 50, 900);
-
             currentByte+=data.length();
         }
     }
 
     if(!currentFile->atEnd()) {
-        if(pendingPackets.length()<PENDING_PACKET_LIMIT) {
-            emit fileChunkReady();
+        const quint64 length = pendingPackets.length();
+        if(length<PENDING_PACKET_LIMIT) {
+            static const quint64 percent10 = PENDING_PACKET_LIMIT/10;
+            static const quint64 percent5 = PENDING_PACKET_LIMIT/20;
+
+            if(length+percent5>PENDING_PACKET_LIMIT)
+                QTimer::singleShot(2, this, &FileProtocolSocket::fileChunkReady);
+            else if(length+percent10>PENDING_PACKET_LIMIT)
+                QTimer::singleShot(1, this, &FileProtocolSocket::fileChunkReady);
+            else
+                emit fileChunkReady();
         }
         else {
             //qInfo()<<"Pausing file sending until pending sockets are confirmed.";
@@ -180,7 +188,7 @@ void FileProtocolSocket::fileChunkReceived(QByteArray data, quint64 offset)
         chunkBuffer<<chunk;
     }
 }
-void FileProtocolSocket::datagramReceived(QByteArray data)
+void FileProtocolSocket::datagramReceived(QByteArray data, ClientID addr)
 {
     bool invalid = false;
 
@@ -251,6 +259,10 @@ void FileProtocolSocket::datagramReceived(QByteArray data)
             delete multi;
             break;
         }
+        case Broadcast::ID: {
+            emit broadcastReceived(addr);
+            break;
+        }
         default:{
             invalid = true;
                 //m.data = std::shared_ptr<ErrorData>(new ErrorData(bytes));
@@ -316,9 +328,36 @@ void FileProtocolSocket::sendDatagram(QByteArray data)
         if(bytesWritten<=0) {
             QString error(socket->errorString());
             sendFailures++;
+            QString errors[] = {
+                "ConnectionRefusedError",
+                "RemoteHostClosedError",
+                "HostNotFoundError",
+                "SocketAccessError",
+                "SocketResourceError",
+                "SocketTimeoutError",                     /* 5 */
+                "DatagramTooLargeError",
+                "NetworkError",
+                "AddressInUseError",
+                "SocketAddressNotAvailableError",
+                "UnsupportedSocketOperationError",        /* 10 */
+                "UnfinishedSocketOperationError",
+                "ProxyAuthenticationRequiredError",
+                "SslHandshakeFailedError",
+                "ProxyConnectionRefusedError",
+                "ProxyConnectionClosedError",             /* 15 */
+                "ProxyConnectionTimeoutError",
+                "ProxyNotFoundError",
+                "ProxyProtocolError",
+                "OperationError",
+                "SslInternalError",                       /* 20 */
+                "SslInvalidUserDataError",
+                "TemporaryError"
+            };
+            int errorNo = socket->error();
+            QString errorName = (errorNo>=0 && errorNo<(sizeof(errors)/sizeof(errors[0]))) ? errors[errorNo] : QString("Unknown Error.");
             // let's see what happens, if I act as if no error happened
             //throw ConnectionError(QString("Cannot send packet: ")+error);
-            //qCritical()<<QString("Cannot send packet: ")+error;
+            qCritical()<<QString("Cannot send packet: ")+error<<socket->error()<<"\nNAME:"<<errorName;
         }
         else {
             // Wait for confirmation of receipt
@@ -393,7 +432,7 @@ void FileProtocolSocket::filterDatagrams()
         ClientID addr(sender, senderPort);
         // Apparently, the OS already filters datagrams
         if(datagram.length()>0)
-            datagramReceived(datagram);
+            datagramReceived(datagram, addr);
         else
             qWarning()<<"Empty datagram from"<<(sender.isNull()?"0.0.0.0":sender.toString())<<":"<<senderPort;
         //if(!target || addr==target) {
@@ -446,7 +485,7 @@ void FileProtocolSocket::confirmUnconfirmedPackets()
 void FileProtocolSocket::forceResendPackets()
 {
     //qSort(pendingPackets.begin(), pendingPackets.end(), PacketGuard::CompareAge());
-    quint16 resendMax = 10;
+    quint16 resendMax = 2;
     Q_FOREACH(PacketGuard* g, pendingPackets) {
         if(--resendMax == 0)
             break;

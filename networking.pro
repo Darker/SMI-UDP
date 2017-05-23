@@ -1,5 +1,10 @@
 QT += core
 QT -= gui
+android {
+    message("* Compiling for android, GUI is encessary:")
+    QT += gui
+    greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
+}
 QT += network
 CONFIG += c++11
 #dddd
@@ -30,6 +35,7 @@ SOURCES += main.cpp \
     OffsetRangeMap.cpp \
     crc32.cpp
 
+
 HEADERS += \
     FileServer.h \
     FileProtocolSocket.h \
@@ -45,3 +51,28 @@ HEADERS += \
     OffsetRangeMap.h \
     crc32.h
 #
+android {
+    QT += gui
+    FORMS += \
+        AndroidMainWindow.ui
+    HEADERS += \
+        AndroidMainWindow.h
+    SOURCES += \
+        AndroidMainWindow.cpp \
+        android.cpp
+    DEFINES+=ANDROID
+
+    DISTFILES += \
+        android/AndroidManifest.xml \
+        android/gradle/wrapper/gradle-wrapper.jar \
+        android/gradlew \
+        android/res/values/libs.xml \
+        android/build.gradle \
+        android/gradle/wrapper/gradle-wrapper.properties \
+        android/gradlew.bat
+
+    ANDROID_PACKAGE_SOURCE_DIR = $$PWD/android
+}
+
+
+

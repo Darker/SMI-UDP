@@ -1,17 +1,22 @@
 #include "FileServer.h"
 #include <QUdpSocket>
+#include "DataPacket.h"
 //#include <QHostAddress>
 //#include <QNetworkDatagram>
+
 FileServer::FileServer(qint64 port, QObject *parent, QHostAddress listenAddr)
     : QObject(parent)
     , listener(new QUdpSocket(this))
     , serverAddress(listenAddr, port)
 {
-    listener->bind(listenAddr.isNull()?QHostAddress::Any:listenAddr, port);
+
+    if(!listener->bind(listenAddr.isNull()?QHostAddress::Any:listenAddr, port)) {
+        throw BindError(QString("Cannot bind to target port %1!").arg(port));
+    }
 
     connect(listener, &QUdpSocket::readyRead,
             this, &FileServer::readPendingDatagrams, Qt::QueuedConnection);
-
+    QObject::connect(&broadcastTimer, &QTimer::timeout, this, &FileServer::sendBroadcast);
 }
 
 void FileServer::readPendingDatagrams()
@@ -46,5 +51,20 @@ void FileServer::processDatagram(QByteArray array, QHostAddress ip, qint64 port)
     if(client==nullptr) {
         connections<<(client = new FileProtocolSocket(listener, source));
     }
-    client->datagramReceived(array);
+    client->datagramReceived(array, source);
+}
+
+void FileServer::startBroadcast()
+{
+    if(!broadcastTimer.isActive()) {
+        broadcastTimer.setInterval(800);
+        broadcastTimer.start();
+    }
+}
+
+void FileServer::sendBroadcast()
+{
+    static const Broadcast constBroadcastPacket = Broadcast();
+    static const QByteArray broadcastData = constBroadcastPacket.toMessage();
+    listener->writeDatagram(broadcastData, QHostAddress::Broadcast, serverAddress.port);
 }

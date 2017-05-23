@@ -3,6 +3,8 @@
 #include "FileClient.h"
 #include <iostream>
 #include "QApplicationProfiler.h"
+#include "FileProtocolSocket.h"
+#include "SendProgress.h"
 void printUsage(const QString& additionalMessage="") {
     std::cout<< "Parameters: filename [-p port] [-a ip address]\n";
     if(!additionalMessage.isEmpty()) {
@@ -59,6 +61,12 @@ int mainClient(int argc, char *argv[])
     }
     if(port>1000 && !targetFile.isEmpty()) {
         FileClient client(serverAddr, port, &a);
+        // Make user informer
+        SendProgress* progress = new SendProgress(client.getSocket());
+        QObject::connect(progress, &SendProgress::progressMessage, progress, [](SendProgress::ProgressInfo info) {
+            QTextStream(stdout)<<info.toString()<<"\n";
+        });
+
         client.sendFile(targetFile);
         QObject::connect(&client, &FileClient::fileSent, &a, &QCoreApplication::quit, Qt::QueuedConnection);
         return a.exec();

@@ -23,7 +23,7 @@ SendProgress::SendProgress(FileProtocolSocket *parent)
     QObject::connect(parent, &FileProtocolSocket::fileSendStarted, this, &SendProgress::started, Qt::QueuedConnection);
 
 }
-QString size_human(double size)
+QString SendProgress::size_human(double size)
 {
     QStringList list;
     list << "kB" << "MB" << "GB" << "TB";
@@ -39,7 +39,7 @@ QString size_human(double size)
     return QString().setNum(size,'f',2)+" "+unit;
 }
 
-QString getTimeString(int time)
+QString SendProgress::getTimeString(int time)
 {
     QString ret("%1:%2:%3");
 
@@ -54,7 +54,7 @@ QString getTimeString(int time)
 
     return ret.arg(hours).arg(minutes).arg(seconds);
 }
-QString getTimeStringMinSecMs(int time)
+QString SendProgress::getTimeStringMinSecMs(int time)
 {
     QString ret("%1:%2.%3");
 
@@ -73,32 +73,54 @@ void SendProgress::updateInfo()
 {
     quint32 size = parent->sendFileSize();
     quint32 sent = parent->sendBytes();
+    if(sent>size)
+        sent = size;
     double percent = (sent*100.0)/(double)size;
+    if(percent>100)
+        percent = 100;
 
-    QTextStream(stdout)<<qRound(percent)<<"% ("<<size_human(sent)<<" of "<<size_human(size)<<") "<<getTimeString(parent->sendSinceStart().elapsed());//<<"\n";
+    //QTextStream(stdout)<<qRound(percent)<<"% ("<<size_human(sent)<<" of "<<size_human(size)<<") "<<getTimeString(parent->sendSinceStart().elapsed());//<<"\n";
     // calculate current speed
     quint32 sinceLastCheck = qRound(lastCheck.elapsed()/1000.0);
     quint32 sentSinceLast = sent-lastSent;
-    double speed = (sentSinceLast / (double)sinceLastCheck);
-    QTextStream(stdout)<<"  SPEED: "<<size_human(speed)<<"/s";
+    double speed = lastSent==0?0:(sentSinceLast / (double)sinceLastCheck);
+    //QTextStream(stdout)<<"  SPEED: "<<size_human(speed)<<"/s";
 
-    QTextStream(stdout)<<"  Wait: "<<getTimeStringMinSecMs(parent->timeSpentWaitingForConfirmation())<<"";
+    //QTextStream(stdout)<<"  Wait: "<<getTimeStringMinSecMs(parent->timeSpentWaitingForConfirmation())<<"";
     // Print real IO speed
-    QTextStream(stdout)<<"  s: "<<size_human((parent->sentBytes-lastSentBytes)/(double)sinceLastCheck)<<"/s r: ";
-    lastSentBytes = parent->sentBytes;
+    //QTextStream(stdout)<<"  s: "<<size_human((parent->sentBytes-lastSentBytes)/(double)sinceLastCheck)<<"/s r: ";
 
-    QTextStream(stdout)<<size_human((parent->receivedBytes-lastReceivedBytes)/(double)sinceLastCheck)<<"/s";
-    lastReceivedBytes = parent->receivedBytes;
-    QTextStream(stdout)<<"\n";
+
+    //QTextStream(stdout)<<size_human((parent->receivedBytes-lastReceivedBytes)/(double)sinceLastCheck)<<"/s";
+
+    //QTextStream(stdout)<<"\n";
     // If there were errors:
+    quint16 CRCFailures = 0;
+    quint16 socketFailures = 0;
     if(lastSendFailures<parent->sendFailures || lastCRCFailures<parent->CRCFailures) {
-        QTextStream(stdout)<<"  ERRORS: send="<<(parent->sendFailures-lastSendFailures)<<" CRC="<<(parent->CRCFailures-lastCRCFailures)<<"\n";
+        //QTextStream(stdout)<<"  ERRORS: send="<<(parent->sendFailures-lastSendFailures)<<" CRC="<<(parent->CRCFailures-lastCRCFailures)<<"\n";
+        socketFailures = parent->sendFailures-lastSendFailures;
+        CRCFailures = parent->CRCFailures-lastCRCFailures;
+
         lastSendFailures = parent->sendFailures;
         lastCRCFailures = parent->CRCFailures;
     }
+    emit progressMessage(ProgressInfo(sent,
+                                      size,
+                                      percent,
+                                      parent->sendSinceStart().elapsed(),
+                                      parent->timeSpentWaitingForConfirmation(),
+                                      speed,
+                                      (parent->sentBytes-lastSentBytes)/(double)sinceLastCheck,
+                                      (parent->receivedBytes-lastReceivedBytes)/(double)sinceLastCheck,
+                                      socketFailures,
+                                      CRCFailures)
+                         );
 
     lastCheck.restart();
     lastSent = sent;
+    lastReceivedBytes = parent->receivedBytes;
+    lastSentBytes = parent->sentBytes;
 }
 
 void SendProgress::done()
@@ -112,4 +134,17 @@ void SendProgress::started()
     lastCheck.start();
     timer.setInterval(1000);
     timer.start();
+}
+
+QString SendProgress::ProgressInfo::toString() const
+{
+    return QString("%1% (%2 of %3) %4 SPEED: %5 WAIT: %6 s: %7/s r: %8/s")
+            .arg(percentage)
+            .arg(size_human(fileBytesSent))
+            .arg(size_human(fileBytesTotal))
+            .arg(getTimeString(timeElapsed))
+            .arg(size_human(fileSpeed))
+            .arg(getTimeStringMinSecMs(timeWait))
+            .arg(size_human(sendSpeed))
+            .arg(size_human(receiveSpeed));
 }

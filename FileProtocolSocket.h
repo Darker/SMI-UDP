@@ -49,12 +49,14 @@ signals:
     // and limit condition is met
     // Therefore is a good way of deferring sending after limit is no longer exceeded
     void packetLimitNotExceeded();
+    // Emitted if broadcast is received
+    void broadcastReceived(ClientID addr);
 public slots:
     void sendFile(QString filePath) {sendFile(QFileInfo(filePath));}
     void sendFile(QFileInfo filePath);
     // does nothing if file is not open or is already sent
     void sendNextFileChunk();
-    void datagramReceived(QByteArray data);
+    void datagramReceived(QByteArray data, ClientID addr);
     void fileHeaderReceived(QString name, quint64 size, QByteArray checksum);
     void fileChunkReceived(QByteArray data, quint64 offset);
 
@@ -164,5 +166,8 @@ class ConnectionError: public Exception {
 public:
     ConnectionError(const QString& err) : Exception(err) {}
 };
-
+class BindError: public Exception {
+public:
+    BindError(const QString& err) : Exception(err) {}
+};
 #endif // FILEPROTOCOLSOCKET_H

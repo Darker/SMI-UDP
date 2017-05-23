@@ -1,6 +1,11 @@
 #include "QApplicationProfiler.h"
 #include <QElapsedTimer>
+#ifdef ANDROID
+#include <QtCore/5.5.1/QtCore/private/qobject_p.h>
+#else
 #include <QtCore/5.6.0/QtCore/private/qobject_p.h>
+#endif
+
 #include <QMetaMethod>
 #include <QDebug>
 #include <QString>
@@ -19,11 +24,11 @@ bool QApplicationProfiler::notify(QObject* target, QEvent* event)
 
         QElapsedTimer timer;
         timer.start();
-
+        const QMetaMethod slot = target->metaObject()->method(metaCall->id());
         bool result = QCoreApplication::notify(target, event);
         quint32 elapsed = timer.elapsed();
         if(elapsed>10) {
-            QMetaMethod slot = target->metaObject()->method(metaCall->id());
+
             QString slotName = slot.isValid()?slot.methodSignature():QString("!INVALID[")+QString::number(metaCall->id())+"]!";
             slotName.prepend("] ");
             if(slot.methodType()>=0 && slot.methodType()<4) {
@@ -33,7 +38,7 @@ bool QApplicationProfiler::notify(QObject* target, QEvent* event)
                 slotName.prepend("Unknown");
             }
             slotName.prepend("[");
-            qDebug() << "The slow operation"<< target << slotName<< "took" << timer.elapsed() << "milliseconds";
+            qDebug() << "The slow operation" << slotName<< "took" << timer.elapsed() << "milliseconds";
         }
         return result;
     }

@@ -230,7 +230,23 @@ protected:
             stream<<(quint32)index;
         }
     }
+};
+class Broadcast: public BasicDataClass {
+public:
+    static const quint32 ID = 9999;
+    virtual quint32 getID() const override {return ID;}
+    Broadcast()
+     : BasicDataClass()
+    {
 
+    }
+
+    virtual QString toString() const {return "Broadcast";}
+
+protected:
+    virtual void toBytes(QDataStream& stream) const {
+        stream<<((quint16)42);
+    }
 };
 
 QDataStream& operator>>(QDataStream& str, FileHeader*& ptr);

@@ -4,12 +4,15 @@
 #include <QObject>
 #include <QUdpSocket>
 #include <QHostAddress>
-#include "FileProtocolSocket.h"
+class FileProtocolSocket;
 class FileClient : public QObject
 {
     Q_OBJECT
 public:
     explicit FileClient(QHostAddress serverAddr, qint64 port, QObject *parent = 0);
+    FileProtocolSocket* getSocket() {
+        return smartSocket;
+    }
 
 signals:
     void fileSent();
